@@ -165,26 +165,21 @@ func (v mfsVolume) containerMeta() mfsContainerMeta {
 func (v mfsVolume) mfsmountCmd() []string {
 	cmd := []string{
 		"mfsmount", "-f",
-		"-o", "auto_unmount",
-		"-o", "nonempty",
+		"-o", "auto_unmount,nonempty",
 	}
 
-	opts := map[string]string{}
-	for key, val := range v.d.defaultOpts {
-		opts[key] = val
+	if v.d.defaultOpts != "" {
+		cmd = append(cmd, "-o", v.d.defaultOpts)
 	}
 	for key, val := range v.Options {
 		switch key {
 		case "mountpoint", "mkdir", "rmdir": // ignore our options
 		default:
-			opts[key] = val
-		}
-	}
-	for key, val := range v.Options {
-		if val != "" {
-			cmd = append(cmd, "-o", key+"="+val)
-		} else {
-			cmd = append(cmd, "-o", key)
+			if val != "" {
+				cmd = append(cmd, "-o", key+"="+val)
+			} else {
+				cmd = append(cmd, "-o", key)
+			}
 		}
 	}
 
@@ -437,15 +432,14 @@ func (v mfsVolume) unmount() error {
 type mfsVolumeDriver struct {
 	Volumes map[string]*mfsVolume `json:"volumes"`
 
-	name                  string
 	stateDir              string
 	SocketFile            string
 	defaultMountpointBase string
-	mutex                 *sync.Mutex
 
-	defaultOpts map[string]string
+	mutex  *sync.Mutex
+	docker *client.Client
 
-	docker         *client.Client
+	defaultOpts    string
 	dockerImage    string
 	dockerNetwork  string
 	namePrefix     string
@@ -492,13 +486,13 @@ func (d *mfsVolumeDriver) loadState() error {
 	return nil
 }
 
-func newMfsVolumeDriver(defaultOpts map[string]string) (*mfsVolumeDriver, error) {
+func newMfsVolumeDriver() (*mfsVolumeDriver, error) {
 	d := &mfsVolumeDriver{
 		Volumes: map[string]*mfsVolume{},
 
 		mutex: &sync.Mutex{},
 
-		defaultOpts:    defaultOpts,
+		defaultOpts:    "",
 		namePrefix:     driverName + "-volume-mnt-",
 		nameSuffix:     "",
 		hostnamePrefix: "",
@@ -510,6 +504,7 @@ func newMfsVolumeDriver(defaultOpts map[string]string) (*mfsVolumeDriver, error)
 		d.hostnameSuffix += "." + hostname
 	}
 	for env, variable := range map[string]*string{
+		"MFS_DEFAULT_OPTS":    &d.defaultOpts,
 		"MFS_DOCKER_IMAGE":    &d.dockerImage,
 		"MFS_DOCKER_NETWORK":  &d.dockerNetwork,
 		"MFS_NAME_PREFIX":     &d.namePrefix,
