@@ -138,19 +138,17 @@ type mfsContainerMeta struct {
 }
 
 func (v mfsVolume) containerName() string {
-	return strings.Join([]string{
-		driverName,
-		"volume-mnt",
-		v.Name,
-	}, "-")
+	return v.d.namePrefix + v.Name + v.d.nameSuffix
+}
+
+func (v mfsVolume) containerHostname() string {
+	return v.d.hostnamePrefix + v.Name + v.d.hostnameSuffix
 }
 
 func (v mfsVolume) containerMeta() mfsContainerMeta {
 	meta := mfsContainerMeta{
-		Name: v.containerName(),
-
-		// TODO Hostname
-
+		Name:     v.containerName(),
+		Hostname: v.containerHostname(),
 		Labels: map[string]string{
 			labelName:    v.Name,
 			labelCreated: v.Created,
@@ -218,7 +216,6 @@ func (v mfsVolume) ensureMounted() error {
 	dir := v.mountpoint()
 	id := name
 	if res, err := docker.ContainerCreate(ctx, &container.Config{
-		// TODO Hostname
 		Image: v.d.dockerImage,
 		Cmd: append([]string{"sh", "-euc", `
 			# get the last parameter (our mount target)
@@ -234,6 +231,7 @@ func (v mfsVolume) ensureMounted() error {
 		`, "--"}, append(v.mfsmountCmd(), dir)...),
 		WorkingDir:  filepath.Dir(dir),
 		StopTimeout: (func() *int { b := 120; return &b })(),
+		Hostname:    meta.Hostname,
 		Labels:      meta.Labels,
 	}, &container.HostConfig{
 		NetworkMode: container.NetworkMode(v.d.dockerNetwork),
@@ -262,7 +260,11 @@ func (v mfsVolume) ensureMounted() error {
 			},
 		},
 		Init: (func() *bool { b := true; return &b })(),
-	}, &network.NetworkingConfig{}, name); err != nil {
+	}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{v.d.dockerNetwork: {
+		Aliases: []string{
+			meta.Hostname,
+		},
+	}}}, name); err != nil {
 		return err
 	} else {
 		id = res.ID
@@ -443,14 +445,16 @@ type mfsVolumeDriver struct {
 
 	defaultOpts map[string]string
 
-	docker        *client.Client
-	dockerImage   string
-	dockerNetwork string
+	docker         *client.Client
+	dockerImage    string
+	dockerNetwork  string
+	namePrefix     string
+	nameSuffix     string
+	hostnamePrefix string
+	hostnameSuffix string
 }
 
 func (d *mfsVolumeDriver) loadState() error {
-	logrus.Info("loading state")
-
 	ctx := context.Background()
 
 	filters := filters.NewArgs()
@@ -494,9 +498,34 @@ func newMfsVolumeDriver(defaultOpts map[string]string) (*mfsVolumeDriver, error)
 
 		mutex: &sync.Mutex{},
 
-		defaultOpts:   defaultOpts,
-		dockerImage:   os.Getenv("MFS_DOCKER_IMAGE"),
-		dockerNetwork: os.Getenv("MFS_DOCKER_NETWORK"),
+		defaultOpts:    defaultOpts,
+		namePrefix:     driverName + "-volume-mnt-",
+		nameSuffix:     "",
+		hostnamePrefix: "",
+		hostnameSuffix: ".mnt",
+	}
+	if hostname, err := os.Hostname(); err != nil {
+		return nil, d.err("failed to get hostname: %w", err)
+	} else {
+		d.hostnameSuffix += "." + hostname
+	}
+	for env, variable := range map[string]*string{
+		"MFS_DOCKER_IMAGE":    &d.dockerImage,
+		"MFS_DOCKER_NETWORK":  &d.dockerNetwork,
+		"MFS_NAME_PREFIX":     &d.namePrefix,
+		"MFS_NAME_SUFFIX":     &d.nameSuffix,
+		"MFS_HOSTNAME_PREFIX": &d.hostnamePrefix,
+		"MFS_HOSTNAME_SUFFIX": &d.hostnameSuffix,
+	} {
+		if val, ok := os.LookupEnv(env); ok {
+			*variable = val
+		}
+	}
+	if d.dockerImage == "" {
+		return nil, d.err("missing MFS_DOCKER_IMAGE environment variable")
+	}
+	if d.dockerNetwork == "" {
+		return nil, d.err("missing MFS_DOCKER_NETWORK environment variable")
 	}
 
 	ctx := context.Background()
@@ -514,14 +543,6 @@ func newMfsVolumeDriver(defaultOpts map[string]string) (*mfsVolumeDriver, error)
 			"kernelVersion": dockerVersion.KernelVersion,
 		}).Info("connected to Docker")
 		d.docker = docker
-	}
-
-	// TODO allow passing a container name to scrape these from instead (so we can use https://docs.docker.com/engine/reference/commandline/service_create/#template-example to set these to the values of our plugin service container and match the right image digest automatically)
-	if d.dockerImage == "" {
-		return nil, d.err("missing MFS_DOCKER_IMAGE environment variable")
-	}
-	if d.dockerNetwork == "" {
-		return nil, d.err("missing MFS_DOCKER_NETWORK environment variable")
 	}
 
 	d.stateDir = filepath.Join("/run/docker/plugins", driverName)
