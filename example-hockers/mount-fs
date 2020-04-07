@@ -6,12 +6,15 @@ hocker_network_create mfs \
 	--internal \
 	--attachable
 
+preferredChunkserverLabels=
+
 component="${scriptName#mfs-}"
 containerName="mfs-$component"
 if [ "$component" = 'mount-fs' ] || [ "$component" = 'mount-meta' ]; then
 	# it is useful for plain clients to have unique names
 	hostname="$(hostname -s)"
 	containerName+="-$hostname"
+	preferredChunkserverLabels="${hostname:0:1}"
 fi
 args=(
 	--name "$containerName"
@@ -27,6 +30,7 @@ args=(
 
 # mount-specific
 base="$HOME/mfs/mnt/${component#mount-}"
+# TODO adjust base to use ".meta" instead of "meta" so it hides from gvfs
 mkdir -p "$base"
 base="$(cd "$base" && pwd -P)"
 args+=(
@@ -44,9 +48,10 @@ mfsmountArgs=(
 	-f # foreground operation
 	-o auto_unmount # auto unmount on process termination
 	-o mfsflattrash # use flat trash structure in meta
-	-o mfstimeout=30 # define maximum timeout in seconds before I/O error is returned
-	-o mfsnoposixlocks # turn off support for global posix locks (lockf + ioctl)
 	-o mfsnobsdlocks # turn off support for global BSD locks (flock)
+	-o mfsnoposixlocks # turn off support for global posix locks (lockf + ioctl)
+	-o mfspreflabels="$preferredChunkserverLabels"
+	-o mfstimeout=30 # define maximum timeout in seconds before I/O error is returned
 )
 case "$component" in
 	*meta*)
