@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-plugins-helpers/volume"
 	"github.com/moby/sys/mountinfo"
 	"github.com/sirupsen/logrus"
@@ -29,6 +30,11 @@ const (
 	labelName         = labelNamespace + ".volume-name"
 	labelCreated      = labelNamespace + ".volume-created"
 	labelOptionPrefix = labelNamespace + ".volume-options."
+)
+
+var (
+	errTimeout = errors.New("timeout waiting for container")
+	errUnknown = errors.New("unknown container failure")
 )
 
 type mfsVolume struct {
@@ -122,8 +128,6 @@ func (v mfsVolume) isMounted() bool {
 		return false
 	}
 
-	// TODO check for our container too?
-
 	return true
 }
 
@@ -201,7 +205,7 @@ func (v mfsVolume) ensureMounted() error {
 		return err
 	}
 
-	ctx := context.TODO()
+	ctx := context.Background()
 	docker := v.d.docker
 	meta := v.containerMeta()
 	name := meta.Name
@@ -212,6 +216,7 @@ func (v mfsVolume) ensureMounted() error {
 	}
 
 	dir := v.mountpoint()
+	id := name
 	if res, err := docker.ContainerCreate(ctx, &container.Config{
 		// TODO Hostname
 		Image: v.d.dockerImage,
@@ -233,7 +238,8 @@ func (v mfsVolume) ensureMounted() error {
 	}, &container.HostConfig{
 		NetworkMode: container.NetworkMode(v.d.dockerNetwork),
 		RestartPolicy: container.RestartPolicy{
-			Name: "always",
+			// if the container starts successfully (and works), this will be updated to "always"
+			Name: "no",
 		},
 		CapAdd: []string{"SYS_ADMIN"},
 		Resources: container.Resources{
@@ -258,64 +264,123 @@ func (v mfsVolume) ensureMounted() error {
 		Init: (func() *bool { b := true; return &b })(),
 	}, &network.NetworkingConfig{}, name); err != nil {
 		return err
-	} else if len(res.Warnings) > 0 {
-		logrus.WithFields(logrus.Fields{
-			"id":       res.ID,
-			"name":     name,
-			"warnings": strings.Join(res.Warnings, "\n"),
-		}).Warn("container created (with warnings)")
 	} else {
-		logrus.WithFields(logrus.Fields{
-			"id":   res.ID,
+		id = res.ID
+		logrusFields := logrus.Fields{
+			"id":   id,
 			"name": name,
-		}).Info("container created")
+		}
+		logrusMsg := "container created"
+		if len(res.Warnings) > 0 {
+			logrusFields["warnings"] = strings.Join(res.Warnings, "\n")
+			logrusMsg += " (with warnings)"
+		}
+		logrus.WithFields(logrusFields).Info(logrusMsg)
 	}
 
-	if err := docker.ContainerStart(ctx, name, types.ContainerStartOptions{}); err != nil {
+	if err := docker.ContainerStart(ctx, id, types.ContainerStartOptions{}); err != nil {
 		return err
 	} else {
 		logrus.WithFields(logrus.Fields{
+			"id":   id,
 			"name": name,
 		}).Info("container started")
 	}
 
 	// give it a little time to start up and get connected and double check that "isMounted" returns true
-	timeo := time.After(25 * time.Second) // TODO configurable startup timeout? ("mfsdelayedinit" plays a role here)
+	// TODO configurable startup timeout? ("mfsdelayedinit" plays a role here)
 	// at ~20 seconds we should get "can't resolve master hostname and/or portname (foo:9421)" on a bad mfsmaster value
-	// at ~120 seconds, the client gives up ("context deadline exceeded")
-	tick := time.Tick(100 * time.Millisecond)
+	// at ~120 seconds, the client requesting this volume gives up ("context deadline exceeded")
+	startTimeout := time.NewTimer(25 * time.Second)
+	defer startTimeout.Stop()
+
+	containerWaitCtx, containerWaitCancel := context.WithCancel(ctx)
+	defer containerWaitCancel() // just in case it somehow gets missed
+	containerExitCodeChan := make(chan int64)
+	go func() {
+		defer containerWaitCancel()
+		waitBodyC, errC := docker.ContainerWait(containerWaitCtx, id, container.WaitConditionNotRunning)
+		select {
+		case err := <-errC:
+			if errors.Is(err, context.Canceled) {
+				close(containerExitCodeChan)
+			} else {
+				logrus.WithFields(logrus.Fields{
+					"id":   id,
+					"name": name,
+				}).WithError(err).Error("failed waiting for container")
+				containerExitCodeChan <- math.MaxInt64
+			}
+		case waitBody := <-waitBodyC:
+			containerExitCodeChan <- waitBody.StatusCode
+		}
+	}()
+
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	failure := errUnknown
 isMountedLoop:
 	for {
 		if v.isMounted() {
-			return nil
-		}
-		// TODO check if container is restarting? (so we can bail earlier)
-		select {
-		case <-timeo:
-			// TODO propagate to the error message that this was a timeout
+			failure = nil
+			containerWaitCancel()
 			break isMountedLoop
-		case <-tick:
+		}
+		select {
+		case exitCode := <-containerExitCodeChan:
+			if exitCode == math.MaxInt64 {
+				failure = fmt.Errorf("container wait failed")
+			} else {
+				failure = fmt.Errorf("container exited with code: %d", exitCode)
+			}
+			break isMountedLoop
+		case <-startTimeout.C:
+			failure = errTimeout
+			containerWaitCancel()
+			break isMountedLoop
+		case <-ticker.C:
+			// continue trying!
 		}
 	}
 
-	if !v.isMounted() {
+	if failure != nil {
+		var logs string
 		if logsReadCloser, err := docker.ContainerLogs(ctx, name, types.ContainerLogsOptions{
 			ShowStdout: true,
 			ShowStderr: true,
-		}); err == nil {
+		}); err != nil {
+			logs = fmt.Sprintf("failed to get container logs: %v", err)
+		} else {
 			defer logsReadCloser.Close()
-			if logs, err := ioutil.ReadAll(logsReadCloser); err == nil {
-				return v.d.err("failed to start volume %q:\n%s", v.Name, string(logs))
+			logsBuilder := strings.Builder{}
+			if _, err := stdcopy.StdCopy(&logsBuilder, &logsBuilder, logsReadCloser); err != nil {
+				logs = fmt.Sprintf("failed to parse container logs: %v", err)
+			} else {
+				logs = logsBuilder.String()
 			}
 		}
-		return v.d.err("failed to start volume %q (unknown issue)", v.Name)
+		return v.d.err("failed to start volume %q: %w\n%s", v.Name, failure, logs)
+	}
+
+	// now that we know our container is running successfully and working, let's update the restart policy to "always"
+	if _, err := docker.ContainerUpdate(ctx, id, container.UpdateConfig{
+		RestartPolicy: container.RestartPolicy{
+			Name: "always",
+		},
+	}); err != nil {
+		return v.d.err("volume %q: failed to update restart policy for container %q (%q): %w", v.Name, name, id, err)
+	} else {
+		logrus.WithFields(logrus.Fields{
+			"id":   id,
+			"name": name,
+		}).Info("container restart policy updated")
 	}
 
 	return nil
 }
 
 func (v mfsVolume) unmount() error {
-	ctx := context.TODO()
+	ctx := context.Background()
 	docker := v.d.docker
 
 	// remove all containers with a matching "volume-name" label
@@ -386,7 +451,7 @@ type mfsVolumeDriver struct {
 func (d *mfsVolumeDriver) loadState() error {
 	logrus.Info("loading state")
 
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	filters := filters.NewArgs()
 	filters.Add("label", labelName)
@@ -434,9 +499,11 @@ func newMfsVolumeDriver(defaultOpts map[string]string) (*mfsVolumeDriver, error)
 		dockerNetwork: os.Getenv("MFS_DOCKER_NETWORK"),
 	}
 
+	ctx := context.Background()
+
 	if docker, err := client.NewClientWithOpts(client.FromEnv); err != nil {
 		return nil, d.err("failed to connect to Docker: %w", err)
-	} else if dockerVersion, err := docker.ServerVersion(context.TODO()); err != nil {
+	} else if dockerVersion, err := docker.ServerVersion(ctx); err != nil {
 		return nil, d.err("failed to connect to Docker: %w", err)
 	} else {
 		logrus.WithFields(logrus.Fields{
