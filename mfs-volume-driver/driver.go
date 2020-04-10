@@ -238,6 +238,9 @@ func (v mfsVolume) ensureMounted() error {
 			Name: "no",
 		},
 		CapAdd: []string{"SYS_ADMIN"},
+		SecurityOpt: []string{
+			"apparmor=unconfined",
+		},
 		Resources: container.Resources{
 			Devices: []container.DeviceMapping{
 				{
