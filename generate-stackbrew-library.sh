@@ -8,7 +8,10 @@ declare -A aliases=(
 self="$(basename "$BASH_SOURCE")"
 cd "$(dirname "$(readlink -f "$BASH_SOURCE")")"
 
-versions=( [0-9]*/ )
+versions=(
+	[0-9]*/
+	mfs-volume-driver/
+)
 versions=( "${versions[@]%/}" )
 
 # get the most recent commit which modified any of "$@"
@@ -26,6 +29,9 @@ dirCommit() {
 			$(git show HEAD:./Dockerfile | awk '
 				toupper($1) == "COPY" {
 					for (i = 2; i < NF; i++) {
+						if ($i ~ /^--from=/) {
+							next
+						}
 						print $i
 					}
 				}
@@ -49,6 +55,18 @@ join() {
 
 for version in "${versions[@]}"; do
 	commit="$(dirCommit "$version")"
+
+	case "$version" in
+		mfs-volume-driver)
+			echo
+			cat <<-EOE
+				Tags: volume-driver
+				GitCommit: $commit
+				Directory: $version
+			EOE
+			continue
+			;;
+	esac
 
 	fullVersion="$(git show "$commit":"$version/Dockerfile" | awk '$1 == "ENV" && $2 == "MOOSEFS_VERSION" { print $3; exit }')"
 
