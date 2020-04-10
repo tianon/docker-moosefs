@@ -1,0 +1,40 @@
+#!/usr/bin/env hocker
+# vim:set ft=sh:
+
+hocker_network_create mfs \
+	--driver overlay \
+	--internal \
+	--attachable
+
+component="${scriptName#mfs-}"
+containerName="mfs-$component"
+if [ "$component" = 'chunkservers' ]; then
+	# it is useful for plain chunkservers to have unique names
+	hostname="$(hostname -s)"
+	containerName+="-$hostname"
+fi
+args=(
+	--name "$containerName"
+
+	tianon/moosefs:3
+
+	--hostname "$containerName"
+	--mount 'type=bind,source=/etc/localtime,target=/etc/localtime,readonly'
+	--network mfs
+	--security-opt no-new-privileges
+	--user "$(id -u):$(id -g)"
+)
+
+# chunkserver-specific
+base="$HOME/mfs/$component"
+base="$(cd "$base" && pwd -P)"
+args+=(
+	# TODO MFSCHUNKSERVER_LABELS
+	--env MFS_CHUNKSERVERS="$base"
+	--mount "type=bind,source=$base,target=$base,bind-propagation=rslave"
+	--mount 'type=bind,source=/mnt,target=/mnt,bind-propagation=rslave'
+	--stop-timeout 120
+)
+
+hocker_run "${args[@]}" \
+	--entrypoint docker-chunkservers.sh --
