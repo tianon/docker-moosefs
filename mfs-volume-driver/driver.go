@@ -120,13 +120,7 @@ func (v mfsVolume) isMounted() bool {
 		return false
 	}
 
-	// if the mfsmount ".stats", ".random", and ".masterinfo" pseudo-files exist, we're very likely successfully mounted (and rooted -- ".stats" and ".random" only exist at the root of the mount, whereas ".masterinfo" exists in every directory)
-	if _, err := os.Lstat(filepath.Join(mountpoint, ".stats")); err != nil {
-		return false
-	}
-	if _, err := os.Lstat(filepath.Join(mountpoint, ".random")); err != nil {
-		return false
-	}
+	// if the mfsmount ".masterinfo" pseudo-file exists, we're very likely successfully mounted
 	if _, err := os.Lstat(filepath.Join(mountpoint, ".masterinfo")); err != nil {
 		return false
 	}
