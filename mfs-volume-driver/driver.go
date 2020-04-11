@@ -525,7 +525,7 @@ func newMfsVolumeDriver() (*mfsVolumeDriver, error) {
 
 	ctx := context.Background()
 
-	if docker, err := client.NewClientWithOpts(client.FromEnv); err != nil {
+	if docker, err := client.NewClientWithOpts(client.FromEnv, client.WithVersion("1.39")); err != nil {
 		return nil, d.err("failed to connect to Docker: %w", err)
 	} else if dockerVersion, err := docker.ServerVersion(ctx); err != nil {
 		return nil, d.err("failed to connect to Docker: %w", err)
