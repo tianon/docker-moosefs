@@ -7,6 +7,11 @@ cd "$chunkservers"
 temp="$(mktemp -d)"
 trap "$(printf 'rm -rf %q' "$temp")" EXIT
 
+# if "ALLOW_STARTING_WITH_INVALID_DISKS" isn't set, let's change the default from 0 to 1
+# (otherwise, a chunkserver with invalid disks stops ALL our chunkservers from starting)
+: "${MFSCHUNKSERVER_ALLOW_STARTING_WITH_INVALID_DISKS:=1}"
+export MFSCHUNKSERVER_ALLOW_STARTING_WITH_INVALID_DISKS
+
 copy_etc() {
 	local dir="$1"; shift
 	cp -aT /etc/mfs "$dir"
