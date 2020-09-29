@@ -36,9 +36,17 @@ any_still_up() {
 	done
 	return 1
 }
+kill_all() {
+	for pid in "${pids[@]}"; do
+		if [ -d "/proc/$pid" ]; then
+			# try to make sure the process is still running before signalling it to avoid "pid X doesn't exist" over and over again if one is hung and we're trying to stop
+			kill "$@" "$pid"
+		fi
+	done
+}
 end_session() {
 	while any_still_up; do
-		kill "${pids[@]}"
+		kill_all
 		sleep 1
 		# TODO timeout?
 	done
@@ -46,7 +54,7 @@ end_session() {
 }
 hup_all() {
 	if any_still_up; then
-		kill -HUP "${pids[@]}"
+		kill_all -HUP
 	fi
 }
 trap 'end_session 0' ABRT ALRM INT KILL PIPE QUIT STOP TERM USR1 USR2
