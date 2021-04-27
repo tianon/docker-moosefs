@@ -18,17 +18,29 @@ copy_etc() {
 	find "$dir" -type f -exec sed -ri "s!/etc/mfs!$dir!g" '{}' +
 }
 
-declare -A pids=()
+declare -A pids=() cfgs=()
 
 all_still_up() {
-	for pid in "${pids[@]}"; do
+	local name pid cfg
+	for name in "${!pids[@]}"; do
+		pid="${pids["$name"]}"
 		if [ ! -d "/proc/$pid" ]; then
+			if cfg="${cfgs["$name"]:-}" && [ -n "$cfg" ] && [ ! -s "$cfg" ]; then
+				# if a process is dead, and we had a config file but it's now empty or gone, we should ignore this process (was probably a removed drive/server)
+				unset pids["$name"] cfgs["$name"]
+				continue
+			fi
 			return 1
 		fi
 	done
+	if [ "${#pids[@]}" -eq 0 ]; then
+		# if we've emptied the full list of processes, we're not "up" anymore :)
+		return 1
+	fi
 	return 0
 }
 any_still_up() {
+	local pid
 	for pid in "${pids[@]}"; do
 		if [ -d "/proc/$pid" ]; then
 			return 0
@@ -37,6 +49,7 @@ any_still_up() {
 	return 1
 }
 kill_all() {
+	local pid
 	for pid in "${pids[@]}"; do
 		if [ -d "/proc/$pid" ]; then
 			# try to make sure the process is still running before signalling it to avoid "pid X doesn't exist" over and over again if one is hung and we're trying to stop
@@ -117,6 +130,7 @@ for cfg in *-mfshdd.cfg; do
 		mfschunkserver -func "$temp/$name/mfschunkserver.cfg" &
 	pid="$!"
 	pids["$name"]="$pid"
+	cfgs["$name"]="$cfg"
 
 	(( port++ )) || :
 	all_still_up || end_session 1
