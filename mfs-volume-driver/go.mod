@@ -12,7 +12,7 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-plugins-helpers v0.0.0-20200102110956-c9a8a2d92ccc
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/gogo/protobuf v1.3.1 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/moby/sys/mountinfo v0.1.3
 	github.com/morikuni/aec v1.0.0 // indirect
@@ -20,7 +20,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.5.0
-	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
+	golang.org/x/sys v0.0.0-20200930185726-fdedc70b468f
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/grpc v1.28.0 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
