@@ -20,7 +20,7 @@ require (
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.5.0
-	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
+	golang.org/x/sys v0.1.0
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0 // indirect
 	google.golang.org/grpc v1.28.0 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
