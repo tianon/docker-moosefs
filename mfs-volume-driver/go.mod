@@ -17,7 +17,7 @@ require (
 	github.com/moby/sys/mountinfo v0.1.3
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0-rc1 // indirect
-	github.com/opencontainers/image-spec v1.0.1 // indirect
+	github.com/opencontainers/image-spec v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.5.0
 	golang.org/x/sys v0.0.0-20200331124033-c3d80250170d
