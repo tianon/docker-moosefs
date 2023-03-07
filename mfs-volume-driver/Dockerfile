@@ -1,4 +1,4 @@
-FROM golang:1.13-buster AS build
+FROM golang:1.20-bullseye AS build
 
 WORKDIR /mvd
 
@@ -7,10 +7,10 @@ RUN go mod verify
 RUN go mod download
 
 COPY . .
-RUN go build -v -tags netgo -installsuffix netgo -ldflags '-d -s -w' -o /mfs-volume-driver ./...
+RUN go build -v -tags netgo -installsuffix netgo -ldflags '-d -w' -o /mfs-volume-driver ./...
 
 # TODO make proper tagged releases (with binaries) and consume those instead
-FROM alpine:3.11
+FROM alpine:3.17
 
 COPY --from=build /mfs-volume-driver /usr/local/bin/
 

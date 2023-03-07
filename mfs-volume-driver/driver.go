@@ -259,7 +259,7 @@ func (v mfsVolume) ensureMounted() error {
 		Aliases: []string{
 			meta.Hostname,
 		},
-	}}}, name); err != nil {
+	}}}, nil, name); err != nil {
 		return err
 	} else {
 		id = res.ID
@@ -390,7 +390,7 @@ func (v mfsVolume) unmount() error {
 		return fmt.Errorf("failed to list containers: %w", err)
 	} else {
 		for _, ctr := range ctrs {
-			if err := docker.ContainerStop(ctx, ctr.ID, nil); err != nil && !client.IsErrNotFound(err) {
+			if err := docker.ContainerStop(ctx, ctr.ID, container.StopOptions{}); err != nil && !client.IsErrNotFound(err) {
 				return fmt.Errorf("failed to stop container %s: %w", ctr.ID, err)
 			}
 			if err := docker.ContainerRemove(ctx, ctr.ID, types.ContainerRemoveOptions{Force: true}); err != nil && !client.IsErrNotFound(err) {
@@ -401,7 +401,7 @@ func (v mfsVolume) unmount() error {
 
 	// remove any leftover container matching our desired container name
 	name := v.containerName()
-	if err := docker.ContainerStop(ctx, name, nil); err != nil && !client.IsErrNotFound(err) {
+	if err := docker.ContainerStop(ctx, name, container.StopOptions{}); err != nil && !client.IsErrNotFound(err) {
 		return fmt.Errorf("failed to stop container %s: %w", name, err)
 	}
 	if err := docker.ContainerRemove(ctx, name, types.ContainerRemoveOptions{Force: true}); err != nil && !client.IsErrNotFound(err) {
