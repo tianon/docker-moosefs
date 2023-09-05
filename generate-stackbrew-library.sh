@@ -1,5 +1,5 @@
-#!/bin/bash
-set -eu
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
 declare -A aliases=(
 	[3]='latest'
@@ -56,6 +56,18 @@ join() {
 for version in "${versions[@]}"; do
 	commit="$(dirCommit "$version")"
 
+	parents="$(git show "$commit":"$version/Dockerfile" | awk '$1 == "FROM"  { print $2 }')"
+	parentsArches='[]'
+	for parent in $parents; do
+		parentArches="$(bashbrew remote arches --json "$parent" | jq -c '.arches | keys')"
+		if [ "$parentsArches" = '[]' ]; then
+			parentsArches="$parentArches"
+		else
+			parentsArches="$(jq <<<"$parentsArches" -c --argjson arches "$parentArches" '. - (. - $arches)')"
+		fi
+	done
+	arches="$(jq <<<"$parentsArches" -r 'join(", ")')"
+
 	case "$version" in
 		mfs-volume-driver)
 			echo
@@ -63,6 +75,7 @@ for version in "${versions[@]}"; do
 				Tags: volume-driver
 				GitCommit: $commit
 				Directory: $version
+				Architectures: $arches
 			EOE
 			continue
 			;;
@@ -91,5 +104,6 @@ for version in "${versions[@]}"; do
 		Tags: $(join ', ' "${versionAliases[@]}")
 		GitCommit: $commit
 		Directory: $version
+		Architectures: $arches
 	EOE
 done
