@@ -10,7 +10,9 @@ RUN set -eux; \
 	; \
 	rm -rf /var/lib/apt/lists/*; \
 # allow running mfsmount as non-root
-	sed -ri 's/^#user_allow_other$/user_allow_other/' /etc/fuse.conf
+	grep '^#user_allow_other$' /etc/fuse.conf; \
+	sed -ri 's/^#user_allow_other$/user_allow_other/' /etc/fuse.conf; \
+	grep '^user_allow_other$' /etc/fuse.conf
 
 RUN set -eux; \
 	groupadd \
@@ -95,7 +97,7 @@ RUN set -eux; \
 	apt-mark auto '.*' > /dev/null; \
 	apt-mark manual $savedAptMark > /dev/null; \
 	find /usr/local -type f -executable -exec ldd '{}' ';' \
-		| awk '/=>/ && $(NF-1) ~ /^\// { print $(NF-1) }' \
+		| awk '/=>/ { so = $(NF-1); if (index(so, "/usr/local/") == 1) { next }; gsub("^/(usr/)?", "", so); print so }' \
 		| sort -u \
 		| xargs -r dpkg-query --search 2>/dev/null \
 		| cut -d: -f1 \
