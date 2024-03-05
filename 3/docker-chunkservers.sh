@@ -91,7 +91,7 @@ for chunks in */chunks/; do
 	dir="$(dirname "$chunks")"
 	cfg="$dir-mfshdd.cfg"
 	if [ ! -s "$cfg" ]; then
-		readlink -f "$chunks" >> "$cfg"
+		readlink -ve "$chunks" >> "$cfg"
 	fi
 done
 
@@ -120,8 +120,8 @@ for cfg in *-mfshdd.cfg; do
 	sed -r "s!/etc/mfs!$temp/$name!g" /usr/local/bin/docker-entrypoint.sh > "$temp/$name/entrypoint.sh"
 	chmod +x "$temp/$name/entrypoint.sh"
 
-	cfg="$(readlink -f "$cfg")"
-	var="$(readlink -f "$var")"
+	cfg="$(readlink -ve "$cfg")"
+	var="$(readlink -ve "$var")"
 	MFSCHUNKSERVER_CSSERV_LISTEN_PORT="$port" \
 		MFSCHUNKSERVER_SYSLOG_IDENT="$name" \
 		MFSCHUNKSERVER_HDD_CONF_FILENAME="$cfg" \
