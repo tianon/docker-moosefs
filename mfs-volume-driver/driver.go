@@ -207,6 +207,10 @@ func (v mfsVolume) ensureMounted() error {
 
 	dir := v.mountpoint()
 	id := name
+	networkEndpointSettings := network.EndpointSettings{}
+	if v.d.dockerNetwork != "host" {
+		networkEndpointSettings.Aliases = []string{meta.Hostname}
+	}
 	if res, err := docker.ContainerCreate(ctx, &container.Config{
 		Image: v.d.dockerImage,
 		Cmd: append([]string{"sh", "-euc", `
@@ -255,11 +259,7 @@ func (v mfsVolume) ensureMounted() error {
 			},
 		},
 		Init: (func() *bool { b := true; return &b })(),
-	}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{v.d.dockerNetwork: {
-		Aliases: []string{
-			meta.Hostname,
-		},
-	}}}, nil, name); err != nil {
+	}, &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{v.d.dockerNetwork: &networkEndpointSettings}}, nil, name); err != nil {
 		return err
 	} else {
 		id = res.ID
