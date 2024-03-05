@@ -88,11 +88,14 @@ RUN set -eux; \
 		cfg="${sample%.sample}"; \
 		[ -s "$cfg" ] || cp -avT "$sample" "$cfg"; \
 	done; \
+	cp -avT /etc/mfs /etc/mfs.sample; \
+	rm -v /etc/mfs.sample/*.sample; \
 	cp -avT /var/lib/mfs /var/lib/mfs.sample; \
 	cp -avT /var/lib/mfs/metadata.mfs.empty /var/lib/mfs/metadata.mfs; \
 	\
 # allow us to run as an arbitrary user but still modify configuration
-	chmod 777 /etc/mfs /var/lib/mfs; \
+	chmod 777 /etc/mfs; \
+	chmod 1777 /var/lib/mfs; \
 	\
 	apt-mark auto '.*' > /dev/null; \
 	apt-mark manual $savedAptMark > /dev/null; \
