@@ -3,7 +3,6 @@ FROM golang:1.20-bookworm AS build
 WORKDIR /mvd
 
 COPY go.mod go.sum ./
-RUN go mod verify
 RUN go mod download
 
 COPY . .
