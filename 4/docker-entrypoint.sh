@@ -12,6 +12,7 @@ sed_escape_rhs() {
 # magic with environment variables
 for cfg in \
 	/etc/mfs/mfschunkserver.cfg \
+	/etc/mfs/mfsgui.cfg \
 	/etc/mfs/mfsmaster.cfg \
 	/etc/mfs/mfsmetalogger.cfg \
 ; do
