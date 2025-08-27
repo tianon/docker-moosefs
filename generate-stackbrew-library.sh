@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 
 declare -A aliases=(
-	[3]='latest'
+	[4]='latest'
 )
 
 self="$(basename "$BASH_SOURCE")"
