@@ -56,6 +56,7 @@ join() {
 for version in "${versions[@]}"; do
 	commit="$(dirCommit "$version")"
 
+	suite=
 	parents="$(git show "$commit":"$version/Dockerfile" | awk '$1 == "FROM"  { print $2 }')"
 	parentsArches='[]'
 	for parent in $parents; do
@@ -65,6 +66,18 @@ for version in "${versions[@]}"; do
 		else
 			parentsArches="$(jq <<<"$parentsArches" -c --argjson arches "$parentArches" '. - (. - $arches)')"
 		fi
+		case "$parent" in
+			debian:*)
+				parentSuite="${parent#*:}" # "trixie-slim"
+				parentSuite="${parentSuite%-slim}" # "trixie"
+				if [ -z "$suite" ]; then
+					suite="$parentSuite"
+				elif [ "$suite" != "$parentSuite" ]; then
+					echo >&2 "error: mismatched suites '$suite' vs '$parentSuite' in $version"
+					exit 1
+				fi
+				;;
+		esac
 	done
 	arches="$(jq <<<"$parentsArches" -r 'join(", ")')"
 
@@ -98,6 +111,12 @@ for version in "${versions[@]}"; do
 		$version
 		${aliases[$version]:-}
 	)
+
+	if [ -n "$suite" ]; then
+		suiteAliases=( "${versionAliases[@]/%/-$suite}" )
+		suiteAliases=( "${suiteAliases[@]//latest-/}" )
+		versionAliases+=( "${suiteAliases[@]}" )
+	fi
 
 	echo
 	cat <<-EOE
