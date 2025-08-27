@@ -1,14 +1,13 @@
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN set -eux; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
+	apt-get install --update -y --no-install-recommends \
 # mfscli (and cgi) are Python-based
 		python3 \
 # mfsmount needs "fusermount"
 		fuse \
 	; \
-	rm -rf /var/lib/apt/lists/*; \
+	apt-get dist-clean; \
 # allow running mfsmount as non-root
 	grep '^#user_allow_other$' /etc/fuse.conf; \
 	sed -ri 's/^#user_allow_other$/user_allow_other/' /etc/fuse.conf; \
@@ -38,8 +37,7 @@ ENV MOOSEFS_VERSION 3.0.118
 
 RUN set -eux; \
 	savedAptMark="$(apt-mark showmanual)"; \
-	apt-get update; \
-	apt-get install -y --no-install-recommends \
+	apt-get install --update -y --no-install-recommends \
 		ca-certificates \
 		wget \
 		\
@@ -53,7 +51,6 @@ RUN set -eux; \
 		pkg-config \
 		zlib1g-dev \
 	; \
-	rm -rf /var/lib/apt/lists/*; \
 	\
 	wget -O moosefs.tgz "https://github.com/moosefs/moosefs/archive/v${MOOSEFS_VERSION}.tar.gz"; \
 	mkdir /usr/local/src/moosefs; \
@@ -108,6 +105,7 @@ RUN set -eux; \
 		| xargs -r apt-mark manual \
 	; \
 	apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false; \
+	apt-get dist-clean; \
 	\
 	mfsmount --version; \
 	mfscli -v; \
